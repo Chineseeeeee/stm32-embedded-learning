@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ssd1306.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,6 +40,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 
@@ -48,13 +49,19 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t I2C_CheckDevice(uint8_t addr);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+static void error_halt(void)
+{
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+    while (1) {
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -86,40 +93,28 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  /* 1. Тактирование GPIOB и I2C1 */
-  RCC->AHB1ENR |= (1U << 1);   /* GPIOBEN */
-  RCC->APB1ENR |= (1U << 21);  /* I2C1EN */
+  if (ssd1306_init(&hi2c1) != HAL_OK) {
+      error_halt();
+  }
+  /* Тест 1: весь экран белый на 2 секунды */
+  ssd1306_fill(1);
+  if (ssd1306_update() != HAL_OK) {
+      error_halt();
+  }
+  HAL_Delay(2000);
 
-  /* 2. PB6 и PB7 в Alternate Function, Open-Drain */
-  GPIOB->MODER &= ~(3U << (6 * 2));
-  GPIOB->MODER |=  (2U << (6 * 2));
-  GPIOB->MODER &= ~(3U << (7 * 2));
-  GPIOB->MODER |=  (2U << (7 * 2));
+  /* Тест 2: четыре точки в углах */
+  ssd1306_fill(0);
+  ssd1306_set_pixel(0,   0,  1);
+  ssd1306_set_pixel(127, 0,  1);
+  ssd1306_set_pixel(0,   63, 1);
+  ssd1306_set_pixel(127, 63, 1);
+  if (ssd1306_update() != HAL_OK) {
+      error_halt();
+  }
 
-  GPIOB->OTYPER |= (1U << 6);  /* Open-drain для PB6 */
-  GPIOB->OTYPER |= (1U << 7);  /* Open-drain для PB7 */
-
-  GPIOB->PUPDR &= ~(3U << (6 * 2));
-  GPIOB->PUPDR |=  (1U << (6 * 2));  /* Pull-up PB6 */
-  GPIOB->PUPDR &= ~(3U << (7 * 2));
-  GPIOB->PUPDR |=  (1U << (7 * 2));  /* Pull-up PB7 */
-
-  /* 3. AF4 для I2C1 */
-  GPIOB->AFR[0] &= ~(0xFU << (6 * 4));
-  GPIOB->AFR[0] |=  (4U   << (6 * 4));
-  GPIOB->AFR[0] &= ~(0xFU << (7 * 4));
-  GPIOB->AFR[0] |=  (4U   << (7 * 4));
-
-  /* 4. Сброс и настройка I2C1 */
-  I2C1->CR1 |= (1U << 15);   /* SWRST */
-  I2C1->CR1 &= ~(1U << 15);  /* снять сброс */
-
-  I2C1->CR2 = 16;             /* частота APB1 в МГц (16 МГц при HSI) */
-  I2C1->CCR = 80;             /* для 100 кГц: CCR = f_APB1 / (2*100000) */
-  I2C1->TRISE = 17;           /* макс время нарастания + 1 */
-
-  I2C1->CR1 |= (1U << 0);    /* PE - I2C enable */
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -129,17 +124,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  for (uint8_t addr = 1; addr < 127; addr++)
-	      {
-	          if (I2C_CheckDevice(addr))
-	          {
-	              /* Нашли устройство - мигнём светодиодом 3 раза */
-	              /* (если это тот же проект что и LED, добавь код GPIO из задания 1) */
-	          }
-	      }
-
-	      for (volatile uint32_t i = 0; i < 5000000U; i++);
-
+	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+	  HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
@@ -191,6 +177,40 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -217,8 +237,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin
-                          |Audio_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD5_Pin|Audio_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : CS_I2C_SPI_Pin */
   GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -278,10 +297,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
   HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD4_Pin LD3_Pin LD5_Pin LD6_Pin
-                           Audio_RST_Pin */
-  GPIO_InitStruct.Pin = LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin
-                          |Audio_RST_Pin;
+  /*Configure GPIO pins : LD4_Pin LD5_Pin Audio_RST_Pin */
+  GPIO_InitStruct.Pin = LD4_Pin|LD5_Pin|Audio_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -315,14 +332,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(OTG_FS_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : Audio_SCL_Pin Audio_SDA_Pin */
-  GPIO_InitStruct.Pin = Audio_SCL_Pin|Audio_SDA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
   /*Configure GPIO pin : MEMS_INT2_Pin */
   GPIO_InitStruct.Pin = MEMS_INT2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
@@ -335,36 +344,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-extern void UART_SendString(char *str);  /* если объединяешь с UART проектом */
-
-uint8_t I2C_CheckDevice(uint8_t addr)
-{
-    I2C1->CR1 |= (1U << 8);              /* START */
-    while (!(I2C1->SR1 & (1U << 0)));    /* ждём SB */
-
-    I2C1->DR = (addr << 1);              /* адрес + write bit */
-
-    uint32_t timeout = 10000;
-    while (!(I2C1->SR1 & (1U << 1)) && timeout--);  /* ждём ADDR или timeout */
-
-    uint8_t result = 0;
-    if (I2C1->SR1 & (1U << 1))
-    {
-        result = 1;                       /* устройство ответило */
-        volatile uint16_t clear = I2C1->SR1 | I2C1->SR2;  /* очистка ADDR */
-        (void)clear;
-    }
-    else
-    {
-        I2C1->SR1 &= ~(1U << 10);        /* сброс AF (acknowledge failure) */
-    }
-
-    I2C1->CR1 |= (1U << 9);              /* STOP */
-
-    for (volatile uint32_t i = 0; i < 1000; i++);  /* небольшая пауза */
-
-    return result;
-}
 
 /* USER CODE END 4 */
 
